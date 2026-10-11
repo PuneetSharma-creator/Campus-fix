@@ -15,7 +15,75 @@ interface AiAnalysisResult {
   explanation: string | null;
 }
 
-// Call Gemini API to classify the complaint
+// Model fallback cascade: primary model followed by fallback models
+const GEMINI_MODELS = [
+  "gemini-3.5-flash-lite", // Primary: fast and lightweight
+  "gemini-3.6-flash",      // Fallback 1: if primary fails with 429/500/502/503/timeout
+  "gemini-3.8-flash",      // Fallback 2: final fallback model
+];
+
+// Timeout per model attempt to prevent hanging requests (6 seconds)
+const MODEL_REQUEST_TIMEOUT_MS = 6000;
+
+// Execute an individual Gemini model request with strict timeout and safe error logging
+async function callGeminiModel(
+  model: string,
+  prompt: string,
+  apiKey: string
+): Promise<AiAnalysisResult | null> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), MODEL_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseMimeType: "application/json",
+        },
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      // Log model name and HTTP status code without exposing API key or URL
+      console.warn(`[AI Analysis] Model '${model}' failed with HTTP status ${response.status}`);
+      return null;
+    }
+
+    const result = await response.json();
+    const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) {
+      console.warn(`[AI Analysis] Model '${model}' returned an empty response`);
+      return null;
+    }
+
+    const parsed = JSON.parse(text);
+    return {
+      category: parsed?.category || null,
+      priority: parsed?.priority || null,
+      explanation: parsed?.explanation || null,
+    };
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "AbortError") {
+      console.warn(`[AI Analysis] Model '${model}' request timed out after ${MODEL_REQUEST_TIMEOUT_MS}ms`);
+    } else {
+      console.warn(
+        `[AI Analysis] Model '${model}' request failed:`,
+        err instanceof Error ? err.message : "Network/execution error"
+      );
+    }
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// Call Gemini API with automatic fallback cascade
 async function analyzeComplaintWithGemini(
   description: string,
   apiKey: string
@@ -36,38 +104,14 @@ Return ONLY a valid JSON object matching this schema:
   "explanation": "string"
 }`;
 
-  // Use Gemini 2.5 Flash / 1.5 Flash via Generative Language REST API
-  const model = "gemini-3.8-flash";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: {
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API error (${response.status}): ${errText}`);
+  for (const model of GEMINI_MODELS) {
+    const result = await callGeminiModel(model, prompt, apiKey);
+    if (result && (result.category || result.priority || result.explanation)) {
+      return result;
+    }
   }
 
-  const result = await response.json();
-  const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) {
-    throw new Error("No response text returned by Gemini");
-  }
-
-  const parsed = JSON.parse(text);
-  return {
-    category: parsed?.category || null,
-    priority: parsed?.priority || null,
-    explanation: parsed?.explanation || null,
-  };
+  throw new Error("All configured Gemini models failed or were unavailable.");
 }
 
 Deno.serve(async (req: Request) => {
@@ -101,7 +145,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 2. Perform Gemini AI analysis
+    // 2. Perform Gemini AI analysis with multi-model fallback
     const geminiApiKey =
       Deno.env.get("GEMINI_API_KEY") ||
       Deno.env.get("GOOGLE_API_KEY") ||
@@ -120,7 +164,10 @@ Deno.serve(async (req: Request) => {
         aiPriority = aiResult.priority;
         aiExplanation = aiResult.explanation;
       } catch (geminiErr) {
-        console.warn("Gemini analysis encountered an error:", geminiErr);
+        console.warn(
+          "[AI Analysis] All fallback models failed:",
+          geminiErr instanceof Error ? geminiErr.message : geminiErr
+        );
         aiAnalysisFailed = true;
       }
     } else {
@@ -148,7 +195,9 @@ Deno.serve(async (req: Request) => {
     // 4. Validate complete submission payload
     if (!title || !category || !location) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields: title, category, location, and description are all required." }),
+        JSON.stringify({
+          error: "Missing required fields: title, category, location, and description are all required.",
+        }),
         {
           status: 400,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
