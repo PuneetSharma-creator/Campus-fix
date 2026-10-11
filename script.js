@@ -226,68 +226,43 @@ if (reportForm) {
     // Disable button to prevent duplicate submissions
     if (submitBtn) {
       submitBtn.disabled = true;
-      submitBtn.textContent = "Analyzing complaint with AI...";
+      submitBtn.textContent = "Analyzing & submitting report...";
     }
 
-    let aiCategory = null;
-    let aiPriority = null;
-    let aiExplanation = null;
-    let aiAnalysisFailed = false;
-
-    // 1. Invoke existing Supabase Edge Function: analyze-complaint
     try {
-      const { data: aiData, error: aiError } = await supabaseClient.functions.invoke("analyze-complaint", {
-        body: { description: description }
+      // Invoke the secure Supabase Edge Function:
+      // Handles Gemini analysis and server-side database insertion using service-role credentials.
+      // Eliminates frontend table permissions issues without exposing private complaint fields.
+      const { data: response, error: fnError } = await supabaseClient.functions.invoke("analyze-complaint", {
+        body: {
+          title: title,
+          category: category,
+          location: location,
+          description: description
+        }
       });
 
-      if (aiError || !aiData) {
-        console.warn("AI analysis failed or returned error:", aiError);
-        aiAnalysisFailed = true;
-      } else {
-        let parsedAi = aiData;
-        if (typeof parsedAi === "string") {
-          try {
-            parsedAi = JSON.parse(parsedAi);
-          } catch (parseErr) {
-            console.warn("Could not parse AI response as JSON:", parseErr);
-          }
-        }
-        aiCategory = parsedAi?.category || null;
-        aiPriority = parsedAi?.priority || null;
-        aiExplanation = parsedAi?.explanation || null;
-      }
-    } catch (aiErr) {
-      console.warn("AI analysis request exception/timeout:", aiErr);
-      aiAnalysisFailed = true;
-    }
-
-    if (submitBtn) {
-      submitBtn.textContent = "Saving to database...";
-    }
-
-    try {
-      // 2. Insert new row into "complaints" table preserving user's category and saving AI fields
-      const { data, error } = await supabaseClient
-        .from("complaints")
-        .insert([
-          {
-            title: title,
-            category: category, // Preserves the student's selected category
-            location: location,
-            description: description,
-            status: "Pending", // Default status as requested
-            ai_category: aiCategory,
-            ai_priority: aiPriority,
-            ai_explanation: aiExplanation
-          }
-        ])
-        .select(); // .select() returns the newly created row from the database
-
-      if (error) {
-        console.error("Supabase INSERT error:", error);
-        showMessage(`Database Error: ${error.message}`, "error");
+      if (fnError) {
+        console.error("Submission error:", fnError);
+        showMessage(fnError.message || "Failed to submit report. Please try again.", "error");
         return;
       }
+
+      // Check for application-level error returned in response payload
+      if (response && response.error) {
+        console.error("Server error:", response.error);
+        showMessage(response.error, "error");
+        return;
+      }
+
+      // Extract the created public report representation
+      const createdReport = (response && response.data) ? response.data : {
+        title: title,
+        category: category,
+        location: location,
+        status: "Pending",
+        created_at: new Date().toISOString()
+      };
 
       // If an empty state was visible, remove it
       if (reportsList) {
@@ -296,18 +271,7 @@ if (reportForm) {
           emptyState.remove();
         }
 
-        // Display the newly created complaint at the TOP of the list
-        // Conforms to public view fields only
-        const createdReport = (data && data[0]) ? data[0] : {
-          title: title,
-          category: category,
-          location: location,
-          status: "Pending",
-          ai_category: aiCategory,
-          ai_priority: aiPriority,
-          created_at: new Date().toISOString()
-        };
-
+        // Display the newly created complaint at the TOP of the public list
         const newCard = createComplaintCard(createdReport);
         reportsList.prepend(newCard);
       }
@@ -316,7 +280,7 @@ if (reportForm) {
       reportForm.reset();
 
       // Show appropriate confirmation message
-      if (aiAnalysisFailed) {
+      if (response && response.ai_status === "unavailable") {
         showMessage("Report submitted successfully (AI analysis was temporarily unavailable).", "success");
       } else {
         showMessage("Report submitted and analyzed by AI successfully.", "success");
