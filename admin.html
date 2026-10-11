@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusFix Admin Portal</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Main Container -->
+  <div class="container">
+
+    <!-- Auth Checking / Loading State (Visible while verifying existing session) -->
+    <div id="auth-loading" class="loading-state" style="margin-top: 40px;">
+      Checking administrator session...
+    </div>
+
+    <!-- 1. Admin Login View (Shown when unauthenticated or logged out) -->
+    <div id="admin-login-view" class="hidden">
+      <!-- Login Header Section -->
+      <header class="header">
+        <h1>CampusFix Admin Portal</h1>
+        <p class="subtitle">Sign in with administrator credentials to manage complaints.</p>
+        <a href="index.html" class="nav-link">← Go to Student Complaint Page</a>
+      </header>
+
+      <!-- Login Form Card -->
+      <section class="card form-section">
+        <h2>Administrator Login</h2>
+
+        <!-- Login Feedback Message Banner -->
+        <div id="login-message" class="form-message"></div>
+
+        <form id="admin-login-form" novalidate>
+          <!-- Email Field -->
+          <div class="form-group">
+            <label for="admin-email">Admin Email</label>
+            <input 
+              type="email" 
+              id="admin-email" 
+              placeholder="e.g., admin@campus.edu" 
+              autocomplete="email"
+              required
+            >
+          </div>
+
+          <!-- Password Field -->
+          <div class="form-group">
+            <label for="admin-password">Password</label>
+            <input 
+              type="password" 
+              id="admin-password" 
+              placeholder="Enter your password" 
+              autocomplete="current-password"
+              required
+            >
+          </div>
+
+          <!-- Login Submit Button -->
+          <button type="submit" class="submit-btn" id="login-submit-btn">Login</button>
+        </form>
+      </section>
+    </div>
+
+    <!-- 2. Admin Dashboard View (Shown only to verified admin) -->
+    <div id="admin-dashboard-view" class="hidden">
+      <!-- Admin Top Navigation Bar -->
+      <div class="admin-top-bar">
+        <a href="index.html" class="nav-link">← Go to Student Complaint Page</a>
+        <div class="admin-user-info">
+          <span class="admin-badge">Admin</span>
+          <span id="admin-user-email" class="admin-user-email">admin</span>
+          <button type="button" id="admin-logout-btn" class="logout-btn">Log Out</button>
+        </div>
+      </div>
+
+      <!-- Dashboard Header -->
+      <header class="header">
+        <h1>CampusFix Admin Dashboard</h1>
+        <p class="subtitle">Review campus complaints and update resolution status.</p>
+      </header>
+
+      <!-- Global Feedback Message Banner -->
+      <div id="admin-message" class="form-message"></div>
+
+      <!-- Admin Complaints List Section -->
+      <section class="reports-section" style="margin-top: 10px;">
+        <h2>All Submitted Complaints</h2>
+        <div id="admin-reports-list" class="reports-list">
+          <p class="loading-state">Loading complaints from database...</p>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+  <!-- 1. Official Supabase JavaScript Client (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- 2. Existing Application Configuration -->
+  <script src="config.js"></script>
+
+  <!-- 3. Admin Dashboard & Authentication Logic (Vanilla JavaScript) -->
+  <script>
+    // ----------------------------------------------------
+    // Configuration & Security Constants
+    // ----------------------------------------------------
+    const AUTHORIZED_ADMIN_ID = "6f7e153c-8a68-4473-a2e3-de40530a87de";
+
+    // ----------------------------------------------------
+    // DOM Element References
+    // ----------------------------------------------------
+    const authLoading = document.getElementById("auth-loading");
+    const adminLoginView = document.getElementById("admin-login-view");
+    const adminDashboardView = document.getElementById("admin-dashboard-view");
+
+    // Login Form Elements
+    const adminLoginForm = document.getElementById("admin-login-form");
+    const adminEmailInput = document.getElementById("admin-email");
+    const adminPasswordInput = document.getElementById("admin-password");
+    const loginSubmitBtn = document.getElementById("login-submit-btn");
+    const loginMessage = document.getElementById("login-message");
+
+    // Dashboard Elements
+    const adminUserEmail = document.getElementById("admin-user-email");
+    const adminLogoutBtn = document.getElementById("admin-logout-btn");
+    const adminReportsList = document.getElementById("admin-reports-list");
+    const adminMessage = document.getElementById("admin-message");
+
+    // ----------------------------------------------------
+    // Supabase Client Initialization
+    // ----------------------------------------------------
+    let supabaseClient = null;
+
+    function initializeSupabase() {
+      if (supabaseClient) {
+        return true;
+      }
+
+      if (typeof window.supabase === "undefined") {
+        showLoginView();
+        showLoginMessage("Supabase client library failed to load. Check your internet connection.", "error");
+        return false;
+      }
+
+      if (
+        !CONFIG ||
+        !CONFIG.SUPABASE_URL ||
+        !CONFIG.SUPABASE_ANON_KEY ||
+        CONFIG.SUPABASE_URL.includes("your-project-id")
+      ) {
+        showLoginView();
+        showLoginMessage("Supabase credentials missing in config.js.", "error");
+        return false;
+      }
+
+      const { createClient } = window.supabase;
+      const cleanUrl = CONFIG.SUPABASE_URL.trim().replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "");
+      const cleanKey = CONFIG.SUPABASE_ANON_KEY.trim();
+      supabaseClient = createClient(cleanUrl, cleanKey);
+      return true;
+    }
+
+    // ----------------------------------------------------
+    // UI State Switchers
+    // ----------------------------------------------------
+    function showLoadingView() {
+      authLoading.classList.remove("hidden");
+      adminLoginView.classList.add("hidden");
+      adminDashboardView.classList.add("hidden");
+    }
+
+    function showLoginView() {
+      authLoading.classList.add("hidden");
+      adminLoginView.classList.remove("hidden");
+      adminDashboardView.classList.add("hidden");
+    }
+
+    function showDashboardView(user) {
+      authLoading.classList.add("hidden");
+      adminLoginView.classList.add("hidden");
+      adminDashboardView.classList.remove("hidden");
+      if (user && user.email) {
+        adminUserEmail.textContent = user.email;
+      }
+      clearAdminMessage();
+    }
+
+    // ----------------------------------------------------
+    // Feedback Message Helpers
+    // ----------------------------------------------------
+    function showLoginMessage(text, type) {
+      loginMessage.textContent = text;
+      loginMessage.className = `form-message ${type}`;
+    }
+
+    function clearLoginMessage() {
+      loginMessage.textContent = "";
+      loginMessage.className = "form-message";
+    }
+
+    function showAdminMessage(text, type) {
+      adminMessage.textContent = text;
+      adminMessage.className = `form-message ${type}`;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function clearAdminMessage() {
+      adminMessage.textContent = "";
+      adminMessage.className = "form-message";
+    }
+
+    // ----------------------------------------------------
+    // Authentication Functions
+    // ----------------------------------------------------
+
+    // Check existing session on page load
+    async function checkExistingSession() {
+      if (!initializeSupabase()) {
+        return;
+      }
+
+      showLoadingView();
+
+      try {
+        const { data: { session }, error } = await supabaseClient.auth.getSession();
+
+        if (error) {
+          console.warn("Session check error:", error);
+          showLoginView();
+          return;
+        }
+
+        if (session && session.user) {
+          // Verify user ID matches the authorized admin ID
+          if (session.user.id === AUTHORIZED_ADMIN_ID) {
+            showDashboardView(session.user);
+            fetchAdminComplaints();
+          } else {
+            // Not authorized: sign out immediately and show access-denied error
+            await supabaseClient.auth.signOut();
+            showLoginView();
+            showLoginMessage("Access denied: Your account is not authorized as an administrator.", "error");
+          }
+        } else {
+          // No active session
+          showLoginView();
+        }
+      } catch (err) {
+        console.error("Session verification failed:", err);
+        showLoginView();
+      }
+    }
+
+    // Handle Login Form Submission
+    async function handleLogin(event) {
+      event.preventDefault();
+      clearLoginMessage();
+
+      const email = adminEmailInput.value.trim();
+      const password = adminPasswordInput.value;
+
+      if (!email || !password) {
+        showLoginMessage("Please enter both email and password.", "error");
+        return;
+      }
+
+      if (!initializeSupabase()) {
+        return;
+      }
+
+      loginSubmitBtn.disabled = true;
+      loginSubmitBtn.textContent = "Signing in...";
+
+      try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({
+          email: email,
+          password: password
+        });
+
+        if (error) {
+          console.error("Login error:", error);
+          showLoginMessage(error.message || "Invalid email or password.", "error");
+          return;
+        }
+
+        const user = data?.user;
+
+        // Verify authenticated user's ID matches authorized admin ID
+        if (!user || user.id !== AUTHORIZED_ADMIN_ID) {
+          await supabaseClient.auth.signOut();
+          showLoginMessage("Access denied: Your account is not authorized as an administrator.", "error");
+          return;
+        }
+
+        // Successfully authenticated & authorized
+        adminLoginForm.reset();
+        showDashboardView(user);
+        fetchAdminComplaints();
+
+      } catch (err) {
+        console.error("Unexpected login error:", err);
+        showLoginMessage("An unexpected error occurred during login. Please try again.", "error");
+      } finally {
+        loginSubmitBtn.disabled = false;
+        loginSubmitBtn.textContent = "Login";
+      }
+    }
+
+    // Handle Logout
+    async function handleLogout() {
+      try {
+        adminLogoutBtn.disabled = true;
+        adminLogoutBtn.textContent = "Logging out...";
+        if (supabaseClient) {
+          await supabaseClient.auth.signOut();
+        }
+      } catch (err) {
+        console.error("Logout error:", err);
+      } finally {
+        adminLogoutBtn.disabled = false;
+        adminLogoutBtn.textContent = "Log Out";
+        // Reset and hide complaints
+        adminReportsList.innerHTML = '<p class="loading-state">Loading complaints from database...</p>';
+        showLoginView();
+        showLoginMessage("You have been signed out successfully.", "success");
+      }
+    }
+
+    // ----------------------------------------------------
+    // Event Listeners for Authentication
+    // ----------------------------------------------------
+    adminLoginForm.addEventListener("submit", handleLogin);
+    adminLogoutBtn.addEventListener("click", handleLogout);
+
+    // ----------------------------------------------------
+    // Admin Complaint Management Logic (Preserved)
+    // ----------------------------------------------------
+    function getStatusClass(status) {
+      const s = (status || "Pending").toLowerCase();
+      if (s === "resolved") return "status-resolved";
+      if (s === "in progress") return "status-in-progress";
+      return "status-pending";
+    }
+
+    function getPriorityClass(priority) {
+      const p = (priority || "").toLowerCase();
+      if (p === "high") return "priority-high";
+      if (p === "low") return "priority-low";
+      return "priority-medium";
+    }
+
+    function createAdminCard(report) {
+      const card = document.createElement("div");
+      card.className = "report-card";
+      card.id = `report-card-${report.id}`;
+
+      let formattedDate = "Unknown Date";
+      if (report.created_at) {
+        const d = new Date(report.created_at);
+        if (!isNaN(d.getTime())) {
+          formattedDate = d.toLocaleString(undefined, {
+            dateStyle: "medium",
+            timeStyle: "short"
+          });
+        }
+      }
+
+      const currentStatus = report.status || "Pending";
+      const statusClass = getStatusClass(currentStatus);
+
+      // AI Priority Badge (rendered only if ai_priority is present)
+      const priorityBadge = report.ai_priority
+        ? `<span class="priority-badge ${getPriorityClass(report.ai_priority)}">Priority: ${escapeHTML(report.ai_priority)}</span>`
+        : "";
+
+      // AI Analysis Details Box (rendered only if AI results exist)
+      let aiBox = "";
+      if (report.ai_category || report.ai_priority || report.ai_explanation) {
+        aiBox = `
+          <div class="ai-analysis-box">
+            <div class="ai-analysis-header">
+              <span class="ai-tag">✨ AI Analysis</span>
+              ${report.ai_category ? `<span class="ai-category-suggested">Suggested Category: <strong>${escapeHTML(report.ai_category)}</strong></span>` : ""}
+            </div>
+            ${report.ai_explanation ? `<p class="ai-explanation"><strong>Reasoning:</strong> ${escapeHTML(report.ai_explanation)}</p>` : ""}
+          </div>
+        `;
+      }
+
+      card.innerHTML = `
+        <div class="report-header">
+          <h3 class="report-title">${escapeHTML(report.title || "")}</h3>
+          <div class="badges-container">
+            <span class="category-badge">${escapeHTML(report.category || "General")}</span>
+            ${priorityBadge}
+            <span id="status-badge-${report.id}" class="status-badge ${statusClass}">
+              Status: ${escapeHTML(currentStatus)}
+            </span>
+          </div>
+        </div>
+
+        <div class="report-location">
+          📍 <strong>Location:</strong> ${escapeHTML(report.location || "Not specified")}
+        </div>
+
+        <p class="report-description">${escapeHTML(report.description || "")}</p>
+
+        ${aiBox}
+
+        <div class="report-date">Reported: ${escapeHTML(formattedDate)}</div>
+
+        <!-- Admin Status Control Dropdown -->
+        <div class="status-control-container">
+          <span class="status-control-label">Change Status:</span>
+          <select 
+            class="status-select" 
+            data-id="${report.id}"
+            data-previous-status="${escapeHTML(currentStatus)}"
+            aria-label="Update status for ${escapeHTML(report.title || '')}"
+          >
+            <option value="Pending" ${currentStatus === "Pending" ? "selected" : ""}>Pending</option>
+            <option value="In Progress" ${currentStatus === "In Progress" ? "selected" : ""}>In Progress</option>
+            <option value="Resolved" ${currentStatus === "Resolved" ? "selected" : ""}>Resolved</option>
+          </select>
+        </div>
+      `;
+
+      const selectElement = card.querySelector(".status-select");
+      selectElement.addEventListener("change", handleStatusChange);
+
+      return card;
+    }
+
+    async function fetchAdminComplaints() {
+      adminReportsList.innerHTML = '<p class="loading-state">Loading complaints from database...</p>';
+
+      if (!supabaseClient) {
+        if (!initializeSupabase()) return;
+      }
+
+      try {
+        const { data, error } = await supabaseClient
+          .from("complaints")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          console.error("Supabase SELECT error:", error);
+          showAdminMessage(`Database Error: ${error.message}`, "error");
+          adminReportsList.innerHTML = `
+            <div class="empty-state error-state">
+              <p>Failed to load complaints from database.</p>
+              <small>${escapeHTML(error.message)}</small>
+            </div>
+          `;
+          return;
+        }
+
+        adminReportsList.innerHTML = "";
+
+        if (!data || data.length === 0) {
+          adminReportsList.innerHTML = `
+            <div class="empty-state">
+              <p>No complaints found in the database.</p>
+            </div>
+          `;
+          return;
+        }
+
+        data.forEach(function (report) {
+          const card = createAdminCard(report);
+          adminReportsList.appendChild(card);
+        });
+
+      } catch (err) {
+        console.error("Network error:", err);
+        showAdminMessage("Could not connect to the database.", "error");
+        adminReportsList.innerHTML = `
+          <div class="empty-state error-state">
+            <p>Network error connecting to database.</p>
+          </div>
+        `;
+      }
+    }
+
+    async function handleStatusChange(event) {
+      const selectElement = event.target;
+      const complaintId = selectElement.dataset.id;
+      const newStatus = selectElement.value;
+      const previousStatus = selectElement.dataset.previousStatus || "Pending";
+
+      clearAdminMessage();
+      selectElement.disabled = true;
+
+      try {
+        const { data, error } = await supabaseClient
+          .from("complaints")
+          .update({ status: newStatus })
+          .eq("id", complaintId)
+          .select();
+
+        if (error || !data || data.length === 0) {
+          const errMsg = error ? error.message : "Database rejected the update. Check Supabase UPDATE RLS policy.";
+          console.error("Supabase UPDATE error:", errMsg);
+          selectElement.value = previousStatus;
+          showAdminMessage(`Failed to update status: ${errMsg}`, "error");
+          return;
+        }
+
+        selectElement.dataset.previousStatus = newStatus;
+
+        const statusBadge = document.getElementById(`status-badge-${complaintId}`);
+        if (statusBadge) {
+          statusBadge.textContent = `Status: ${newStatus}`;
+          statusBadge.className = `status-badge ${getStatusClass(newStatus)}`;
+        }
+
+        showAdminMessage(`Status successfully updated to "${newStatus}".`, "success");
+
+        setTimeout(function () {
+          clearAdminMessage();
+        }, 4000);
+
+      } catch (err) {
+        console.error("Unexpected update error:", err);
+        selectElement.value = previousStatus;
+        showAdminMessage("Unexpected network error while updating status.", "error");
+      } finally {
+        selectElement.disabled = false;
+      }
+    }
+
+    function escapeHTML(str) {
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // ----------------------------------------------------
+    // Initialize & Check Session on page load
+    // ----------------------------------------------------
+    checkExistingSession();
+  </script>
+</body>
+</html>

@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusFix - Campus Problem Reporting</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Main Container -->
+  <div class="container">
+
+    <!-- Header Section -->
+    <header class="header">
+      <h1>CampusFix</h1>
+      <p class="subtitle">Report campus problems and help improve your campus.</p>
+    </header>
+
+    <!-- Complaint Form Section -->
+    <section class="card form-section">
+      <h2>Report an Issue</h2>
+
+      <!-- Feedback Message Box (Displays Success or Error) -->
+      <div id="form-message" class="form-message"></div>
+      
+      <form id="report-form" novalidate>
+        <!-- Problem Title -->
+        <div class="form-group">
+          <label for="title">Problem Title</label>
+          <input 
+            type="text" 
+            id="title" 
+            placeholder="e.g., Broken projector in Room 302" 
+          >
+        </div>
+
+        <!-- Category Dropdown -->
+        <div class="form-group">
+          <label for="category">Category</label>
+          <select id="category">
+            <option value="" disabled selected>Select a category</option>
+            <option value="Classroom">Classroom & Labs</option>
+            <option value="Hostel">Hostel & Accommodation</option>
+            <option value="Cleanliness">Cleanliness & Sanitation</option>
+            <option value="Wi-Fi / Internet">Wi-Fi & Network</option>
+            <option value="Library">Library</option>
+            <option value="Cafeteria">Cafeteria / Canteen</option>
+            <option value="Other">Other Issues</option>
+          </select>
+        </div>
+
+        <!-- Location -->
+        <div class="form-group">
+          <label for="location">Location</label>
+          <input 
+            type="text" 
+            id="location" 
+            placeholder="e.g., Science Block, 3rd Floor, Lab B" 
+          >
+        </div>
+
+        <!-- Description -->
+        <div class="form-group">
+          <label for="description">Description</label>
+          <textarea 
+            id="description" 
+            rows="4" 
+            placeholder="Describe the issue in detail..." 
+          ></textarea>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" class="submit-btn" id="submit-btn">Submit Report</button>
+      </form>
+    </section>
+
+    <!-- Recent Reports Section -->
+    <section class="reports-section">
+      <h2>Recent Reports</h2>
+      <div id="reports-list" class="reports-list">
+        <!-- Reports loaded from Supabase or submitted by the user will appear here -->
+      </div>
+    </section>
+
+  </div>
+
+  <!-- 1. Official Supabase JavaScript Client (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- 2. Application Configuration -->
+  <script src="config.js"></script>
+  <!-- 3. Application Logic -->
+  <script src="script.js"></script>
+</body>
+</html>

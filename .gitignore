@@ -1,0 +1,9 @@
+# Environment variables and sensitive secrets
+.env
+.env.example
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
