@@ -8,11 +8,76 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// Interface for AI analysis result
+// Permitted complaint categories consistent with index.html
+const ALLOWED_CATEGORIES = [
+  "Classroom",
+  "Hostel",
+  "Cleanliness",
+  "Wi-Fi / Internet",
+  "Library",
+  "Cafeteria",
+  "Other",
+] as const;
+
+type AllowedCategory = typeof ALLOWED_CATEGORIES[number];
+
+// Permitted AI priority values
+const VALID_AI_PRIORITIES = ["Low", "Medium", "High"] as const;
+type AiPriority = typeof VALID_AI_PRIORITIES[number];
+
+// Interface for strictly validated AI analysis result
 interface AiAnalysisResult {
-  category: string | null;
-  priority: string | null;
-  explanation: string | null;
+  category: AllowedCategory;
+  priority: AiPriority;
+  explanation: string;
+}
+
+// Safely validate and normalize priority to Low, Medium, or High
+function parseAiPriority(val: unknown): AiPriority | null {
+  if (typeof val !== "string") return null;
+  const trimmed = val.trim();
+  const matched = VALID_AI_PRIORITIES.find(
+    (p) => p.toLowerCase() === trimmed.toLowerCase()
+  );
+  return matched ?? null;
+}
+
+// Case-insensitive lookup matching allowed category values from index.html (including option label aliases)
+function matchAllowedCategory(val: string): AllowedCategory | null {
+  const trimmed = val.trim().toLowerCase();
+  const directMatch = ALLOWED_CATEGORIES.find(
+    (c) => c.toLowerCase() === trimmed
+  );
+  if (directMatch) return directMatch;
+
+  // Handle label aliases from index.html options
+  if (trimmed === "classroom & labs" || trimmed === "classroom and labs" || trimmed === "labs") {
+    return "Classroom";
+  }
+  if (trimmed === "hostel & accommodation" || trimmed === "hostel and accommodation" || trimmed === "accommodation") {
+    return "Hostel";
+  }
+  if (trimmed === "cleanliness & sanitation" || trimmed === "cleanliness and sanitation" || trimmed === "sanitation") {
+    return "Cleanliness";
+  }
+  if (
+    trimmed === "wi-fi & network" ||
+    trimmed === "wi-fi and network" ||
+    trimmed === "wifi" ||
+    trimmed === "network" ||
+    trimmed === "wi-fi" ||
+    trimmed === "wifi / internet"
+  ) {
+    return "Wi-Fi / Internet";
+  }
+  if (trimmed === "cafeteria / canteen" || trimmed === "cafeteria and canteen" || trimmed === "canteen") {
+    return "Cafeteria";
+  }
+  if (trimmed === "other issues") {
+    return "Other";
+  }
+
+  return null;
 }
 
 // Model fallback cascade: primary model followed by fallback models
@@ -57,16 +122,58 @@ async function callGeminiModel(
 
     const result = await response.json();
     const text = result?.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
+    if (!text || typeof text !== "string" || !text.trim()) {
       console.warn(`[AI Analysis] Model '${model}' returned an empty response`);
       return null;
     }
 
-    const parsed = JSON.parse(text);
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = JSON.parse(text);
+    } catch (_err) {
+      // Attempt recovery if markdown code block or embedded JSON
+      const clean = text.replace(/```(?:json)?\s*|```/gi, "").trim();
+      try {
+        parsed = JSON.parse(clean);
+      } catch (_err2) {
+        const startIdx = text.indexOf("{");
+        const endIdx = text.lastIndexOf("}");
+        if (startIdx !== -1 && endIdx > startIdx) {
+          try {
+            parsed = JSON.parse(text.substring(startIdx, endIdx + 1));
+          } catch (_err3) {
+            console.warn(`[AI Analysis] Model '${model}' returned unparseable JSON text`);
+            return null;
+          }
+        } else {
+          console.warn(`[AI Analysis] Model '${model}' returned malformed JSON text`);
+          return null;
+        }
+      }
+    }
+
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      console.warn(`[AI Analysis] Model '${model}' response was not a JSON object`);
+      return null;
+    }
+
+    const rawCategory = typeof parsed.category === "string" ? parsed.category.trim() : "";
+    const matchedCategory = rawCategory ? matchAllowedCategory(rawCategory) : null;
+    const matchedPriority = parseAiPriority(parsed.priority);
+    const explanation = typeof parsed.explanation === "string" ? parsed.explanation.trim() : "";
+
+    // Validate ALL fields: if any field is missing or invalid, reject this model's output so fallback cascade can try next model
+    if (!matchedCategory || !matchedPriority || !explanation) {
+      console.warn(
+        `[AI Analysis] Model '${model}' returned incomplete or invalid output (category: "${rawCategory}" -> ${matchedCategory}, priority: "${parsed.priority}" -> ${matchedPriority}, explanation: ${explanation ? "present" : "missing"}). Trying next fallback model.`
+      );
+      return null;
+    }
+
     return {
-      category: parsed?.category || null,
-      priority: parsed?.priority || null,
-      explanation: parsed?.explanation || null,
+      category: matchedCategory,
+      priority: matchedPriority,
+      explanation,
     };
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "AbortError") {
@@ -93,25 +200,25 @@ Analyze this student complaint description:
 "${description}"
 
 Determine:
-1. "category": The single best maintenance category (e.g. "Classroom", "Hostel", "Cleanliness", "Wi-Fi / Internet", "Library", "Cafeteria", "Electrical & Appliances", "Plumbing", "HVAC", "Other").
+1. "category": The single best maintenance category from this EXACT list: "Classroom", "Hostel", "Cleanliness", "Wi-Fi / Internet", "Library", "Cafeteria", "Other".
 2. "priority": Urgency level ("Low", "Medium", or "High").
 3. "explanation": A concise 1-2 sentence explanation of your classification and urgency reasoning.
 
 Return ONLY a valid JSON object matching this schema:
 {
-  "category": "string",
+  "category": "Classroom" | "Hostel" | "Cleanliness" | "Wi-Fi / Internet" | "Library" | "Cafeteria" | "Other",
   "priority": "Low" | "Medium" | "High",
   "explanation": "string"
 }`;
 
   for (const model of GEMINI_MODELS) {
     const result = await callGeminiModel(model, prompt, apiKey);
-    if (result && (result.category || result.priority || result.explanation)) {
+    if (result) {
       return result;
     }
   }
 
-  throw new Error("All configured Gemini models failed or were unavailable.");
+  throw new Error("All configured Gemini models failed or returned invalid/incomplete output.");
 }
 
 Deno.serve(async (req: Request) => {
@@ -120,6 +227,7 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
+  // 2. Validate HTTP method
   if (req.method !== "POST") {
     return new Response(
       JSON.stringify({ error: "Method not allowed. Use POST." }),
@@ -131,81 +239,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const body = await req.json();
-    const { title, category, location, description } = body;
-
-    // Validate required description field
-    if (!description || typeof description !== "string" || !description.trim()) {
-      return new Response(
-        JSON.stringify({ error: "The 'description' field is required." }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // 2. Perform Gemini AI analysis with multi-model fallback
-    const geminiApiKey =
-      Deno.env.get("GEMINI_API_KEY") ||
-      Deno.env.get("GOOGLE_API_KEY") ||
-      Deno.env.get("GOOGLE_GENAI_API_KEY") ||
-      "";
-
-    let aiCategory: string | null = null;
-    let aiPriority: string | null = null;
-    let aiExplanation: string | null = null;
-    let aiAnalysisFailed = false;
-
-    if (geminiApiKey) {
-      try {
-        const aiResult = await analyzeComplaintWithGemini(description.trim(), geminiApiKey);
-        aiCategory = aiResult.category;
-        aiPriority = aiResult.priority;
-        aiExplanation = aiResult.explanation;
-      } catch (geminiErr) {
-        console.warn(
-          "[AI Analysis] All fallback models failed:",
-          geminiErr instanceof Error ? geminiErr.message : geminiErr
-        );
-        aiAnalysisFailed = true;
-      }
-    } else {
-      console.warn("GEMINI_API_KEY not configured in Supabase Edge Function secrets.");
-      aiAnalysisFailed = true;
-    }
-
-    // 3. Backward Compatibility:
-    // If only description was passed without title/category/location,
-    // return only the AI analysis object (preserves legacy behavior).
-    if (!title && !category && !location) {
-      return new Response(
-        JSON.stringify({
-          category: aiCategory,
-          priority: aiPriority,
-          explanation: aiExplanation,
-        }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // 4. Validate complete submission payload
-    if (!title || !category || !location) {
-      return new Response(
-        JSON.stringify({
-          error: "Missing required fields: title, category, location, and description are all required.",
-        }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
-    }
-
-    // 5. Initialize Supabase Admin client with Service Role Key (server-side only)
+    // 3. Initialize server-side Supabase Admin client with Service Role Key
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
@@ -227,16 +261,216 @@ Deno.serve(async (req: Request) => {
       },
     });
 
-    // 6. Insert new complaint record into public.complaints
-    // Selects and returns ONLY the safe public fields (omits description & ai_explanation)
+    // 4. Extract and validate incoming Authorization Bearer token
+    const authHeader = req.headers.get("Authorization") ?? req.headers.get("authorization");
+    if (!authHeader || !/^Bearer\s+/i.test(authHeader)) {
+      return new Response(
+        JSON.stringify({
+          error: "Unauthorized: Missing or invalid Authorization header. A valid user session Bearer token is required.",
+        }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    const token = authHeader.replace(/^Bearer\s+/i, "").trim();
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: Empty Bearer token." }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Validate the token against Supabase Auth (server-side verification)
+    const {
+      data: { user },
+      error: authError,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (authError || !user || !user.id) {
+      console.warn("[Auth] Token validation rejected:", authError ? authError.message : "User not found");
+      return new Response(
+        JSON.stringify({ error: "Unauthorized: Invalid or expired session token." }),
+        {
+          status: 401,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // 5. Parse and validate request body structure
+    let body: Record<string, unknown>;
+    try {
+      body = await req.json();
+    } catch (_parseErr) {
+      return new Response(
+        JSON.stringify({ error: "Invalid JSON in request body." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return new Response(
+        JSON.stringify({ error: "Request body must be a JSON object." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // 6. Validate inputs upfront before calling Gemini
+    // Enforce string type, non-whitespace text, max lengths, and permitted categories.
+    // Client-supplied user_id, status, role, or priority are ignored completely.
+
+    // Validate Title: required non-empty string, max 200 characters
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      return new Response(
+        JSON.stringify({ error: "The 'title' field is required and must contain non-whitespace text." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    const title = body.title.trim();
+    if (title.length > 200) {
+      return new Response(
+        JSON.stringify({ error: "The 'title' field must not exceed 200 characters." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Validate Category: required non-empty string, must match allowed options in index.html
+    if (typeof body.category !== "string" || !body.category.trim()) {
+      return new Response(
+        JSON.stringify({ error: "The 'category' field is required and must contain non-whitespace text." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    const matchedCategory = matchAllowedCategory(body.category.trim());
+    if (!matchedCategory) {
+      return new Response(
+        JSON.stringify({
+          error: `Invalid category '${body.category.trim()}'. Permitted categories are: ${ALLOWED_CATEGORIES.join(", ")}.`,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    const category = matchedCategory;
+
+    // Validate Location: required non-empty string, max 200 characters
+    if (typeof body.location !== "string" || !body.location.trim()) {
+      return new Response(
+        JSON.stringify({ error: "The 'location' field is required and must contain non-whitespace text." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    const location = body.location.trim();
+    if (location.length > 200) {
+      return new Response(
+        JSON.stringify({ error: "The 'location' field must not exceed 200 characters." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Validate Description: required non-empty string, max 5000 characters
+    if (typeof body.description !== "string" || !body.description.trim()) {
+      return new Response(
+        JSON.stringify({ error: "The 'description' field is required and must contain non-whitespace text." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+    const description = body.description.trim();
+    if (description.length > 5000) {
+      return new Response(
+        JSON.stringify({ error: "The 'description' field must not exceed 5000 characters." }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // 7. Perform Gemini AI analysis with multi-model fallback
+    const geminiApiKey =
+      Deno.env.get("GEMINI_API_KEY") ||
+      Deno.env.get("GOOGLE_API_KEY") ||
+      Deno.env.get("GOOGLE_GENAI_API_KEY") ||
+      "";
+
+    let aiCategory: AllowedCategory | null = null;
+    let aiPriority: "Low" | "Medium" | "High" | null = null;
+    let aiExplanation: string | null = null;
+    let aiAnalysisFailed = false;
+
+    if (geminiApiKey) {
+      try {
+        const aiResult = await analyzeComplaintWithGemini(description, geminiApiKey);
+        aiCategory = aiResult.category;
+        aiPriority = aiResult.priority;
+        aiExplanation = aiResult.explanation;
+      } catch (geminiErr) {
+        console.warn(
+          "[AI Analysis] All fallback models failed or returned invalid output:",
+          geminiErr instanceof Error ? geminiErr.message : "AI analysis error"
+        );
+        aiAnalysisFailed = true;
+      }
+    } else {
+      console.warn("GEMINI_API_KEY not configured in Supabase Edge Function secrets.");
+      aiAnalysisFailed = true;
+    }
+
+    // Set AI analysis to success only when category, priority, and explanation are all valid.
+    // If every model fails or returns invalid output, clear AI fields and set ai_status: "unavailable".
+    if (aiAnalysisFailed || !aiCategory || !aiPriority || !aiExplanation) {
+      aiAnalysisFailed = true;
+      aiCategory = null;
+      aiPriority = null;
+      aiExplanation = null;
+    }
+
+    // 8. Insert new complaint record into public.complaints
+    // - user_id is set exclusively from the verified user session (user.id)
+    // - status is strictly hardcoded to "Pending"
+    // - Priority is determined by AI (not user-selectable)
+    // - Selects and returns ONLY safe public fields needed by student UI
     const { data: createdRecord, error: insertError } = await supabaseAdmin
       .from("complaints")
       .insert([
         {
-          title: title.trim(),
+          user_id: user.id,
+          title: title,
           category: category,
-          location: location.trim(),
-          description: description.trim(),
+          location: location,
+          description: description,
           status: "Pending",
           ai_category: aiCategory,
           ai_priority: aiPriority,
@@ -247,7 +481,7 @@ Deno.serve(async (req: Request) => {
       .single();
 
     if (insertError) {
-      console.error("Supabase Admin insert error:", insertError);
+      console.error("[Database] Insert error:", insertError.message);
       return new Response(
         JSON.stringify({ error: `Database error: ${insertError.message}` }),
         {
@@ -257,7 +491,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // 7. Return the created public complaint representation
+    // 9. Return the created safe complaint representation
     return new Response(
       JSON.stringify({
         success: true,
@@ -270,7 +504,10 @@ Deno.serve(async (req: Request) => {
       }
     );
   } catch (err) {
-    console.error("Unhandled error in analyze-complaint function:", err);
+    console.error(
+      "Unhandled error in analyze-complaint function:",
+      err instanceof Error ? err.message : "Unknown error"
+    );
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "Internal server error" }),
       {
