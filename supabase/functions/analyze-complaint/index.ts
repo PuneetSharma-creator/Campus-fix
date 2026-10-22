@@ -221,6 +221,63 @@ Return ONLY a valid JSON object matching this schema:
   throw new Error("All configured Gemini models failed or returned invalid/incomplete output.");
 }
 
+/**
+ * Resolves the Supabase Secret Key for admin database operations.
+ *
+ * Implements Supabase's new API key architecture and preserves backward compatibility:
+ * 1. SUPABASE_SECRET_KEYS: JSON dictionary (e.g. {"default": "sb_secret_..."}),
+ *    JSON array, or raw secret string injected by modern Supabase runtimes.
+ * 2. SUPABASE_SECRET_KEY: Single secret key string (sb_secret_...).
+ * 3. SUPABASE_SERVICE_ROLE_KEY: Legacy JWT service_role key for backward compatibility.
+ *
+ * Security: NEVER logs secret key values to console or error payloads.
+ */
+function resolveSupabaseSecretKey(): string | null {
+  // 1. Check SUPABASE_SECRET_KEYS (new format introduced for Secret API Keys)
+  const rawSecretKeys = Deno.env.get("SUPABASE_SECRET_KEYS");
+  if (rawSecretKeys && rawSecretKeys.trim()) {
+    const trimmed = rawSecretKeys.trim();
+    try {
+      const parsed: unknown = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object") {
+        if (Array.isArray(parsed)) {
+          const first = parsed.find((k) => typeof k === "string" && k.trim());
+          if (first && typeof first === "string") return first.trim();
+        } else {
+          const dict = parsed as Record<string, unknown>;
+          // Prefer 'default' named key if present
+          if (typeof dict.default === "string" && dict.default.trim()) {
+            return dict.default.trim();
+          }
+          // Otherwise pick the first non-empty string value
+          for (const val of Object.values(dict)) {
+            if (typeof val === "string" && val.trim()) {
+              return val.trim();
+            }
+          }
+        }
+      }
+    } catch {
+      // If not valid JSON, treat as raw secret string
+      return trimmed;
+    }
+  }
+
+  // 2. Check SUPABASE_SECRET_KEY (singular new format)
+  const singularSecretKey = Deno.env.get("SUPABASE_SECRET_KEY");
+  if (singularSecretKey && singularSecretKey.trim()) {
+    return singularSecretKey.trim();
+  }
+
+  // 3. Fallback to SUPABASE_SERVICE_ROLE_KEY (legacy JWT format for backward compatibility)
+  const legacyServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (legacyServiceRoleKey && legacyServiceRoleKey.trim()) {
+    return legacyServiceRoleKey.trim();
+  }
+
+  return null;
+}
+
 Deno.serve(async (req: Request) => {
   // 1. Handle CORS preflight request
   if (req.method === "OPTIONS") {
@@ -239,12 +296,14 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    // 3. Initialize server-side Supabase Admin client with Service Role Key
+    // 3. Initialize server-side Supabase Admin client with Secret Key
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const supabaseSecretKey = resolveSupabaseSecretKey();
 
-    if (!supabaseUrl || !supabaseServiceKey) {
-      console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in Edge Function environment.");
+    if (!supabaseUrl || !supabaseSecretKey) {
+      console.error(
+        "Server configuration error: missing SUPABASE_URL or valid secret key (checked SUPABASE_SECRET_KEYS, SUPABASE_SECRET_KEY, and SUPABASE_SERVICE_ROLE_KEY)."
+      );
       return new Response(
         JSON.stringify({ error: "Server configuration error: missing database credentials." }),
         {
@@ -254,7 +313,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    const supabaseAdmin = createClient(supabaseUrl, supabaseSecretKey, {
       auth: {
         persistSession: false,
         autoRefreshToken: false,

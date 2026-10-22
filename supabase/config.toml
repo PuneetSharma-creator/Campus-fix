@@ -1,0 +1,19 @@
+# Supabase Local Configuration for CampusFix
+# Documentation: https://supabase.com/docs/guides/cli/config
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+# Edge Function Configuration
+# analyze-complaint:
+# verify_jwt is set to false at the gateway level so incoming student requests
+# reach the Edge Function code directly. The function itself performs mandatory,
+# verified code-level token authentication via supabaseAdmin.auth.getUser(token),
+# rejecting missing, invalid, or expired tokens with HTTP 401 before any complaint
+# processing or database insertion.
+[functions.analyze-complaint]
+verify_jwt = false
