@@ -16,4 +16,4 @@ max_rows = 1000
 # rejecting missing, invalid, or expired tokens with HTTP 401 before any complaint
 # processing or database insertion.
 [functions.analyze-complaint]
-verify_jwt = true
+verify_jwt = false
