@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CampusFix - Campus Problem Reporting</title>
+  <title>CampusFix - Student Portal & Problem Reporting</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -11,77 +11,104 @@
   <!-- Main Container -->
   <div class="container">
 
-    <!-- Header Section -->
-    <header class="header">
-      <h1>CampusFix</h1>
-      <p class="subtitle">Report campus problems and help improve your campus.</p>
-    </header>
+    <!-- Auth Checking / Loading Overlay (Shown while verifying session) -->
+    <div id="auth-loading" class="loading-state" style="margin-bottom: 24px;">
+      Verifying student session...
+    </div>
 
-    <!-- Complaint Form Section -->
-    <section class="card form-section">
-      <h2>Report an Issue</h2>
+    <!-- Authenticated Student View -->
+    <div id="student-app-view" class="hidden">
 
-      <!-- Feedback Message Box (Displays Success or Error) -->
-      <div id="form-message" class="form-message"></div>
-      
-      <form id="report-form" novalidate>
-        <!-- Problem Title -->
-        <div class="form-group">
-          <label for="title">Problem Title</label>
-          <input 
-            type="text" 
-            id="title" 
-            placeholder="e.g., Broken projector in Room 302" 
-          >
+      <!-- Student Top Navigation Bar -->
+      <header class="header">
+        <div class="user-top-bar" id="user-top-bar">
+          <div class="user-info">
+            <span class="user-badge student-badge">Student</span>
+            <span id="user-display-email" class="user-email">Checking account...</span>
+          </div>
+          <div class="user-actions">
+            <button type="button" id="student-logout-btn" class="logout-btn">Log Out</button>
+          </div>
         </div>
 
-        <!-- Category Dropdown -->
-        <div class="form-group">
-          <label for="category">Category</label>
-          <select id="category">
-            <option value="" disabled selected>Select a category</option>
-            <option value="Classroom">Classroom & Labs</option>
-            <option value="Hostel">Hostel & Accommodation</option>
-            <option value="Cleanliness">Cleanliness & Sanitation</option>
-            <option value="Wi-Fi / Internet">Wi-Fi & Network</option>
-            <option value="Library">Library</option>
-            <option value="Cafeteria">Cafeteria / Canteen</option>
-            <option value="Other">Other Issues</option>
-          </select>
+        <h1>CampusFix</h1>
+        <p class="subtitle">Report campus problems and track your facilities maintenance requests.</p>
+      </header>
+
+      <!-- Complaint Form Section -->
+      <section class="card form-section">
+        <h2>Report an Issue</h2>
+
+        <!-- Feedback Message Box (Displays Success or Error) -->
+        <div id="form-message" class="form-message"></div>
+        
+        <form id="report-form" novalidate>
+          <!-- Problem Title -->
+          <div class="form-group">
+            <label for="title">Problem Title</label>
+            <input 
+              type="text" 
+              id="title" 
+              placeholder="e.g., Broken projector in Room 302" 
+              maxlength="200"
+            >
+          </div>
+
+          <!-- Category Dropdown -->
+          <div class="form-group">
+            <label for="category">Category</label>
+            <select id="category">
+              <option value="" disabled selected>Select a category</option>
+              <option value="Classroom">Classroom & Labs</option>
+              <option value="Hostel">Hostel & Accommodation</option>
+              <option value="Cleanliness">Cleanliness & Sanitation</option>
+              <option value="Wi-Fi / Internet">Wi-Fi & Network</option>
+              <option value="Library">Library</option>
+              <option value="Cafeteria">Cafeteria / Canteen</option>
+              <option value="Other">Other Issues</option>
+            </select>
+          </div>
+
+          <!-- Location -->
+          <div class="form-group">
+            <label for="location">Location</label>
+            <input 
+              type="text" 
+              id="location" 
+              placeholder="e.g., Science Block, 3rd Floor, Lab B" 
+              maxlength="200"
+            >
+          </div>
+
+          <!-- Description -->
+          <div class="form-group">
+            <label for="description">Description</label>
+            <textarea 
+              id="description" 
+              rows="4" 
+              placeholder="Describe the issue in detail..." 
+              maxlength="5000"
+            ></textarea>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" class="submit-btn" id="submit-btn">Submit Report</button>
+        </form>
+      </section>
+
+      <!-- My Complaints Section (Private to authenticated student) -->
+      <section class="reports-section">
+        <div class="reports-header-row">
+          <h2>My Complaints</h2>
+          <span id="complaints-count-badge" class="count-badge hidden">0</span>
         </div>
-
-        <!-- Location -->
-        <div class="form-group">
-          <label for="location">Location</label>
-          <input 
-            type="text" 
-            id="location" 
-            placeholder="e.g., Science Block, 3rd Floor, Lab B" 
-          >
+        <p class="reports-subtitle">Track the resolution status and AI priority of issues you have submitted.</p>
+        <div id="reports-list" class="reports-list">
+          <!-- Complaints submitted by the signed-in student will appear here -->
         </div>
+      </section>
 
-        <!-- Description -->
-        <div class="form-group">
-          <label for="description">Description</label>
-          <textarea 
-            id="description" 
-            rows="4" 
-            placeholder="Describe the issue in detail..." 
-          ></textarea>
-        </div>
-
-        <!-- Submit Button -->
-        <button type="submit" class="submit-btn" id="submit-btn">Submit Report</button>
-      </form>
-    </section>
-
-    <!-- Recent Reports Section -->
-    <section class="reports-section">
-      <h2>Recent Reports</h2>
-      <div id="reports-list" class="reports-list">
-        <!-- Reports loaded from Supabase or submitted by the user will appear here -->
-      </div>
-    </section>
+    </div>
 
   </div>
 
@@ -89,7 +116,9 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <!-- 2. Application Configuration -->
   <script src="config.js"></script>
-  <!-- 3. Application Logic -->
+  <!-- 3. Central Authentication Helper -->
+  <script src="auth.js"></script>
+  <!-- 4. Application Logic -->
   <script src="script.js"></script>
 </body>
 </html>

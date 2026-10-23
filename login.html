@@ -1,0 +1,722 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusFix - Sign In | Student & Admin Portal</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="auth-page">
+
+  <div class="login-container">
+
+    <!-- CampusFix Header & Branding -->
+    <header class="header auth-header">
+      <div class="brand-badge">Campus Facilities System</div>
+      <h1>CampusFix</h1>
+      <p class="subtitle">Secure authentication for campus problem reporting and facilities management.</p>
+    </header>
+
+    <!-- Main Authentication Card -->
+    <main class="card auth-card">
+
+      <!-- 1. Portal Selector Tabs (Student vs Admin) -->
+      <nav class="portal-selector" role="tablist" aria-label="Portal Selection">
+        <button 
+          type="button" 
+          id="tab-student" 
+          class="portal-tab active" 
+          role="tab" 
+          aria-selected="true" 
+          aria-controls="auth-content"
+        >
+          <span class="portal-tab-icon" aria-hidden="true">🎓</span>
+          <span class="portal-tab-label">
+            <strong>Student Portal</strong>
+            <small>Report & Track Issues</small>
+          </span>
+        </button>
+        <button 
+          type="button" 
+          id="tab-admin" 
+          class="portal-tab" 
+          role="tab" 
+          aria-selected="false" 
+          aria-controls="auth-content"
+        >
+          <span class="portal-tab-icon" aria-hidden="true">🛡️</span>
+          <span class="portal-tab-label">
+            <strong>Admin Portal</strong>
+            <small>Resolution & Facilities</small>
+          </span>
+        </button>
+      </nav>
+
+      <!-- Active Portal Description Notice -->
+      <div id="portal-banner" class="portal-banner student-banner" aria-live="polite">
+        <span class="portal-pill" id="portal-pill-badge">Student Access</span>
+        <span id="portal-banner-text">Sign in to report campus maintenance issues and track resolution status in real time.</span>
+      </div>
+
+      <!-- Global Auth Message Banner (Displays Success / Error alerts) -->
+      <div id="auth-message" class="form-message" role="alert" aria-live="assertive"></div>
+
+      <!-- 2. Authentication Content Area -->
+      <div id="auth-content">
+
+        <!-- Student Mode Toggle (Sign In vs Create Account) -->
+        <div id="auth-mode-container" class="auth-mode-toggle" role="group" aria-label="Account Action">
+          <button type="button" id="btn-mode-signin" class="mode-btn active">Sign In</button>
+          <button type="button" id="btn-mode-signup" class="mode-btn">Create Account</button>
+        </div>
+
+        <!-- Google OAuth Button -->
+        <div id="google-auth-container" class="google-auth-container">
+          <button type="button" id="google-signin-btn" class="google-btn">
+            <svg class="google-icon" viewBox="0 0 48 48" width="18" height="18" aria-hidden="true">
+              <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+              <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+              <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+              <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+            </svg>
+            <span id="google-btn-text">Continue with Google</span>
+          </button>
+          <div class="auth-divider">
+            <span>or continue with email</span>
+          </div>
+        </div>
+
+        <!-- 3. Form: Sign In (Used for both Student and Admin) -->
+        <form id="signin-form" class="auth-form" novalidate>
+          <div class="form-group">
+            <label for="signin-email">Email Address</label>
+            <input 
+              type="email" 
+              id="signin-email" 
+              placeholder="e.g., student@campus.edu" 
+              autocomplete="email" 
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <div class="label-row">
+              <label for="signin-password">Password</label>
+              <button type="button" id="forgot-password-link" class="text-link forgot-link">Forgot password?</button>
+            </div>
+            <input 
+              type="password" 
+              id="signin-password" 
+              placeholder="Enter your password" 
+              autocomplete="current-password" 
+              required
+            >
+          </div>
+
+          <button type="submit" id="signin-submit-btn" class="submit-btn auth-submit-btn">
+            Sign In to Student Portal
+          </button>
+        </form>
+
+        <!-- 4. Form: Student Sign Up (Only shown on Student Portal when Create Account is active) -->
+        <form id="signup-form" class="auth-form hidden" novalidate>
+          <div class="form-group">
+            <label for="signup-name">Full Name</label>
+            <input 
+              type="text" 
+              id="signup-name" 
+              placeholder="e.g., Alex Sharma" 
+              autocomplete="name" 
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="signup-student-id">Student ID / Roll No. <span class="optional-tag">(Optional)</span></label>
+            <input 
+              type="text" 
+              id="signup-student-id" 
+              placeholder="e.g., 2026-CS-104" 
+              autocomplete="off"
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="signup-email">Campus Email</label>
+            <input 
+              type="email" 
+              id="signup-email" 
+              placeholder="e.g., alex@campus.edu" 
+              autocomplete="email" 
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="signup-password">Password</label>
+            <input 
+              type="password" 
+              id="signup-password" 
+              placeholder="At least 6 characters" 
+              autocomplete="new-password" 
+              minlength="6" 
+              required
+            >
+          </div>
+
+          <div class="form-group">
+            <label for="signup-password-confirm">Confirm Password</label>
+            <input 
+              type="password" 
+              id="signup-password-confirm" 
+              placeholder="Re-enter your password" 
+              autocomplete="new-password" 
+              minlength="6" 
+              required
+            >
+          </div>
+
+          <button type="submit" id="signup-submit-btn" class="submit-btn auth-submit-btn">
+            Create Student Account
+          </button>
+        </form>
+
+        <!-- 5. Form: Password Reset -->
+        <div id="reset-view" class="auth-form hidden">
+          <div class="reset-header">
+            <h3>Reset Your Password</h3>
+            <p class="reset-subtitle">Enter your registered campus email and we will send a password reset link.</p>
+          </div>
+
+          <div class="form-group">
+            <label for="reset-email">Registered Email</label>
+            <input 
+              type="email" 
+              id="reset-email" 
+              placeholder="e.g., user@campus.edu" 
+              autocomplete="email" 
+              required
+            >
+          </div>
+
+          <button type="button" id="reset-submit-btn" class="submit-btn auth-submit-btn">
+            Send Reset Link
+          </button>
+
+          <button type="button" id="cancel-reset-btn" class="text-link back-link">
+            ← Back to Sign In
+          </button>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- Footer Security Information -->
+    <footer class="auth-footer">
+      <p>🛡️ Protected by Supabase Row Level Security & RBAC.</p>
+      <p><small>CampusFix &bull; Student & Facilities Management System</small></p>
+    </footer>
+
+  </div>
+
+  <!-- 1. Official Supabase JavaScript Client (CDN) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- 2. Application Configuration -->
+  <script src="config.js"></script>
+  <!-- 3. Central Authentication Helper -->
+  <script src="auth.js"></script>
+
+  <!-- 4. Login Page Controller Logic -->
+  <script>
+    (function () {
+      "use strict";
+
+      // State
+      let activePortal = "student"; // "student" | "admin"
+      let activeMode = "signin";   // "signin" | "signup"
+
+      // DOM Elements
+      const tabStudent = document.getElementById("tab-student");
+      const tabAdmin = document.getElementById("tab-admin");
+      const portalBanner = document.getElementById("portal-banner");
+      const portalPill = document.getElementById("portal-pill-badge");
+      const portalBannerText = document.getElementById("portal-banner-text");
+      const authMessage = document.getElementById("auth-message");
+
+      const authModeContainer = document.getElementById("auth-mode-container");
+      const btnModeSignin = document.getElementById("btn-mode-signin");
+      const btnModeSignup = document.getElementById("btn-mode-signup");
+
+      const googleAuthContainer = document.getElementById("google-auth-container");
+      const googleSigninBtn = document.getElementById("google-signin-btn");
+      const googleBtnText = document.getElementById("google-btn-text");
+
+      const signinForm = document.getElementById("signin-form");
+      const signinEmail = document.getElementById("signin-email");
+      const signinPassword = document.getElementById("signin-password");
+      const signinSubmitBtn = document.getElementById("signin-submit-btn");
+
+      const signupForm = document.getElementById("signup-form");
+      const signupName = document.getElementById("signup-name");
+      const signupStudentId = document.getElementById("signup-student-id");
+      const signupEmail = document.getElementById("signup-email");
+      const signupPassword = document.getElementById("signup-password");
+      const signupPasswordConfirm = document.getElementById("signup-password-confirm");
+      const signupSubmitBtn = document.getElementById("signup-submit-btn");
+
+      const forgotPasswordLink = document.getElementById("forgot-password-link");
+      const resetView = document.getElementById("reset-view");
+      const resetEmail = document.getElementById("reset-email");
+      const resetSubmitBtn = document.getElementById("reset-submit-btn");
+      const cancelResetBtn = document.getElementById("cancel-reset-btn");
+
+      // UI Helpers
+      function showMessage(text, type = "error") {
+        authMessage.textContent = text;
+        authMessage.className = `form-message ${type}`;
+        authMessage.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function clearMessage() {
+        authMessage.textContent = "";
+        authMessage.className = "form-message";
+      }
+
+      // Switch Portal (Student vs Admin)
+      function setPortal(portal) {
+        clearMessage();
+        activePortal = portal;
+        lastHandledUserId = null;
+        lastHandledPortal = null;
+        CampusFixAuth.setSelectedPortal(portal);
+
+        if (portal === "admin") {
+          tabAdmin.classList.add("active");
+          tabAdmin.setAttribute("aria-selected", "true");
+          tabStudent.classList.remove("active");
+          tabStudent.setAttribute("aria-selected", "false");
+
+          portalBanner.className = "portal-banner admin-banner";
+          portalPill.textContent = "Admin Portal";
+          portalBannerText.textContent = "Restricted to authorized campus facilities staff. Accounts without admin role will be denied.";
+
+          // Admin portal only allows Sign In (no signup tab)
+          authModeContainer.classList.add("hidden");
+          setMode("signin");
+
+          signinSubmitBtn.textContent = "Sign In as Administrator";
+          googleBtnText.textContent = "Sign In with Google (Admin)";
+        } else {
+          tabStudent.classList.add("active");
+          tabStudent.setAttribute("aria-selected", "true");
+          tabAdmin.classList.remove("active");
+          tabAdmin.setAttribute("aria-selected", "false");
+
+          portalBanner.className = "portal-banner student-banner";
+          portalPill.textContent = "Student Access";
+          portalBannerText.textContent = "Sign in to report campus maintenance issues and track resolution status in real time.";
+
+          authModeContainer.classList.remove("hidden");
+          setMode(activeMode || "signin");
+
+          signinSubmitBtn.textContent = "Sign In to Student Portal";
+          googleBtnText.textContent = "Continue with Google";
+        }
+      }
+
+      // Switch Mode (Sign In vs Create Account)
+      function setMode(mode) {
+        clearMessage();
+        activeMode = mode;
+        resetView.classList.add("hidden");
+
+        if (mode === "signup" && activePortal === "student") {
+          btnModeSignup.classList.add("active");
+          btnModeSignin.classList.remove("active");
+          signinForm.classList.add("hidden");
+          signupForm.classList.remove("hidden");
+          googleAuthContainer.classList.remove("hidden");
+        } else {
+          btnModeSignin.classList.add("active");
+          btnModeSignup.classList.remove("active");
+          signinForm.classList.remove("hidden");
+          signupForm.classList.add("hidden");
+          googleAuthContainer.classList.remove("hidden");
+        }
+      }
+
+      // Open Reset Password View
+      function openResetPassword() {
+        clearMessage();
+        signinForm.classList.add("hidden");
+        signupForm.classList.add("hidden");
+        authModeContainer.classList.add("hidden");
+        googleAuthContainer.classList.add("hidden");
+        resetView.classList.remove("hidden");
+
+        if (signinEmail.value.trim()) {
+          resetEmail.value = signinEmail.value.trim();
+        }
+      }
+
+      // Close Reset Password View
+      function closeResetPassword() {
+        clearMessage();
+        resetView.classList.add("hidden");
+        setPortal(activePortal);
+      }
+
+      let isNavigating = false;
+      let isRouting = false;
+      let lastHandledUserId = null;
+      let lastHandledPortal = null;
+
+      // Robust Role-Based Routing using trusted public.get_my_role()
+      async function performRoleRouting(session) {
+        if (isNavigating || isRouting) return;
+        if (!session || !session.user) return;
+
+        // Active portal is taken from current page selection or preserved OAuth selection
+        const portal = (activePortal || CampusFixAuth.getSelectedPortal() || "student").toLowerCase();
+
+        // Prevent duplicate evaluations for the same session and portal
+        if (lastHandledUserId === session.user.id && lastHandledPortal === portal) {
+          return;
+        }
+
+        isRouting = true;
+
+        try {
+          // Retrieve trusted role from server-side RPC get_my_role()
+          const role = await CampusFixAuth.getMyRole();
+
+          if (!role) {
+            console.warn("CampusFixAuth: Could not retrieve trusted role for", session.user.email);
+            isRouting = false;
+            lastHandledUserId = session.user.id;
+            lastHandledPortal = portal;
+            showMessage(
+              `Unable to verify permissions for account (${session.user.email}). Please sign in again.`,
+              "error"
+            );
+            return;
+          }
+
+          if (portal === "admin") {
+            // ADMIN PORTAL SELECTED:
+            if (role === "admin") {
+              // Requirement 1: If selected portal is admin AND trusted role is admin, navigate to admin.html
+              isNavigating = true;
+              lastHandledUserId = session.user.id;
+              lastHandledPortal = portal;
+              CampusFixAuth.clearSelectedPortal();
+              showMessage("Administrator verified. Redirecting to Admin Dashboard...", "success");
+              window.location.href = CampusFixAuth.getRedirectUrl("admin.html");
+              return;
+            } else {
+              // Requirement 1: If selected portal is admin but role is student, show access denied. Never grant roles based on portal selection.
+              isRouting = false;
+              lastHandledUserId = session.user.id;
+              lastHandledPortal = portal;
+              showMessage(
+                `Access Denied: You are signed in as a Student (${session.user.email}). Administrator privileges are required to access the Admin Portal.`,
+                "error"
+              );
+              return;
+            }
+          } else {
+            // STUDENT PORTAL SELECTED:
+            if (role === "student") {
+              // Requirement 1: For the student portal, navigate to index.html only when trusted role is student.
+              isNavigating = true;
+              lastHandledUserId = session.user.id;
+              lastHandledPortal = portal;
+              CampusFixAuth.clearSelectedPortal();
+              showMessage("Student verified. Redirecting to Student Portal...", "success");
+              window.location.href = CampusFixAuth.getRedirectUrl("index.html");
+              return;
+            } else if (role === "admin") {
+              // Requirement 1: Navigate to index.html only when trusted role is student. Admin accounts belong on admin.html.
+              isNavigating = true;
+              lastHandledUserId = session.user.id;
+              lastHandledPortal = portal;
+              CampusFixAuth.clearSelectedPortal();
+              showMessage("Administrator account detected. Redirecting to Admin Dashboard...", "success");
+              window.location.href = CampusFixAuth.getRedirectUrl("admin.html");
+              return;
+            } else {
+              isRouting = false;
+              lastHandledUserId = session.user.id;
+              lastHandledPortal = portal;
+              showMessage(`Unrecognized role "${role}". Access restricted.`, "error");
+              return;
+            }
+          }
+        } catch (err) {
+          isRouting = false;
+          console.error("CampusFixAuth: Error during role routing:", err);
+          showMessage("An unexpected error occurred verifying your role. Please try again.", "error");
+        }
+      }
+
+      // Check current session & route appropriately on page load
+      async function evaluateSession() {
+        if (isNavigating) return;
+
+        const hasAuthParams =
+          window.location.hash.includes("access_token") ||
+          window.location.search.includes("code=");
+
+        if (hasAuthParams) {
+          showMessage("Signing in with Google and verifying role...", "info");
+        }
+
+        const session = await CampusFixAuth.waitForSession();
+        if (!session || !session.user) {
+          if (hasAuthParams) clearMessage();
+          return; // No active session, stay on login page
+        }
+
+        await performRoleRouting(session);
+      }
+
+      // ----------------------------------------------------
+      // Event Handlers
+      // ----------------------------------------------------
+
+      // Portal Tabs
+      tabStudent.addEventListener("click", () => setPortal("student"));
+      tabAdmin.addEventListener("click", () => setPortal("admin"));
+
+      // Mode Toggles
+      btnModeSignin.addEventListener("click", () => setMode("signin"));
+      btnModeSignup.addEventListener("click", () => setMode("signup"));
+
+      // Forgot Password Navigation
+      forgotPasswordLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        openResetPassword();
+      });
+      cancelResetBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        closeResetPassword();
+      });
+
+      // Handle Google OAuth
+      googleSigninBtn.addEventListener("click", async () => {
+        clearMessage();
+        googleSigninBtn.disabled = true;
+        googleBtnText.textContent = "Connecting to Google...";
+
+        CampusFixAuth.setSelectedPortal(activePortal);
+
+        try {
+          const { error } = await CampusFixAuth.signInWithGoogle(activePortal);
+          if (error) {
+            showMessage(error.message || "Failed to start Google sign-in. Check your browser configuration.", "error");
+            googleSigninBtn.disabled = false;
+            googleBtnText.textContent = activePortal === "admin" ? "Sign In with Google (Admin)" : "Continue with Google";
+          }
+        } catch (err) {
+          console.error("Google OAuth error:", err);
+          showMessage("Could not initialize Google OAuth. Please check network connection.", "error");
+          googleSigninBtn.disabled = false;
+          googleBtnText.textContent = activePortal === "admin" ? "Sign In with Google (Admin)" : "Continue with Google";
+        }
+      });
+
+      // Handle Email/Password Sign-In
+      signinForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clearMessage();
+
+        const email = signinEmail.value.trim();
+        const password = signinPassword.value;
+
+        if (!email || !password) {
+          showMessage("Please enter both email and password.", "error");
+          return;
+        }
+
+        signinSubmitBtn.disabled = true;
+        signinSubmitBtn.textContent = "Signing in...";
+
+        try {
+          const { data, error } = await CampusFixAuth.signInWithPassword(email, password);
+
+          if (error) {
+            console.warn("Sign in error:", error.message);
+            showMessage(error.message || "Invalid email or password.", "error");
+            return;
+          }
+
+          if (!data || !data.user) {
+            showMessage("Login failed. No user record returned.", "error");
+            return;
+          }
+
+          // Inspect server-assigned role from public.get_my_role() and route
+          await performRoleRouting(data.session);
+
+        } catch (err) {
+          console.error("Unexpected sign in error:", err);
+          showMessage("An unexpected network error occurred. Please try again.", "error");
+        } finally {
+          signinSubmitBtn.disabled = false;
+          signinSubmitBtn.textContent = activePortal === "admin" ? "Sign In as Administrator" : "Sign In to Student Portal";
+        }
+      });
+
+      // Handle Student Sign-Up
+      signupForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        clearMessage();
+
+        const name = signupName.value.trim();
+        const studentId = signupStudentId.value.trim();
+        const email = signupEmail.value.trim();
+        const password = signupPassword.value;
+        const confirmPassword = signupPasswordConfirm.value;
+
+        if (!name || !email || !password || !confirmPassword) {
+          showMessage("Please fill out all required fields.", "error");
+          return;
+        }
+
+        if (password.length < 6) {
+          showMessage("Password must be at least 6 characters long.", "error");
+          return;
+        }
+
+        if (password !== confirmPassword) {
+          showMessage("Passwords do not match. Please re-enter.", "error");
+          return;
+        }
+
+        signupSubmitBtn.disabled = true;
+        signupSubmitBtn.textContent = "Creating student account...";
+
+        try {
+          const metadata = {
+            full_name: name,
+            student_id: studentId || null,
+          };
+
+          const { data, error } = await CampusFixAuth.signUp(email, password, metadata);
+
+          if (error) {
+            console.warn("Sign up error:", error.message);
+            showMessage(error.message || "Failed to create account.", "error");
+            return;
+          }
+
+          // If session is immediately established (email confirmation disabled in Supabase)
+          if (data && data.session) {
+            showMessage("Account created successfully! Redirecting to student dashboard...", "success");
+            setTimeout(() => {
+              window.location.href = CampusFixAuth.getRedirectUrl("index.html");
+            }, 1200);
+          } else {
+            // Email confirmation required by Supabase project settings
+            showMessage(
+              "Account registered! A confirmation email has been sent to " + email + ". Please verify your email before signing in.",
+              "success"
+            );
+            signupForm.reset();
+            setMode("signin");
+          }
+
+        } catch (err) {
+          console.error("Unexpected signup error:", err);
+          showMessage("An unexpected error occurred during signup. Please try again.", "error");
+        } finally {
+          signupSubmitBtn.disabled = false;
+          signupSubmitBtn.textContent = "Create Student Account";
+        }
+      });
+
+      // Handle Password Reset Request
+      resetSubmitBtn.addEventListener("click", async () => {
+        clearMessage();
+        const email = resetEmail.value.trim();
+
+        if (!email) {
+          showMessage("Please enter your registered email address.", "error");
+          return;
+        }
+
+        resetSubmitBtn.disabled = true;
+        resetSubmitBtn.textContent = "Sending reset link...";
+
+        try {
+          const { error } = await CampusFixAuth.resetPassword(email);
+
+          if (error) {
+            console.warn("Reset password error:", error.message);
+            showMessage(error.message || "Could not send password reset email.", "error");
+            return;
+          }
+
+          showMessage(
+            "Password reset link sent! If an account exists for " + email + ", you will receive an email shortly with instructions.",
+            "success"
+          );
+          resetEmail.value = "";
+
+        } catch (err) {
+          console.error("Unexpected reset error:", err);
+          showMessage("An unexpected error occurred. Please try again.", "error");
+        } finally {
+          resetSubmitBtn.disabled = false;
+          resetSubmitBtn.textContent = "Send Reset Link";
+        }
+      });
+
+      // ----------------------------------------------------
+      // Background Auth State Listener (OAuth token exchange & session restore)
+      // ----------------------------------------------------
+      const client = CampusFixAuth.getClient();
+      if (client) {
+        client.auth.onAuthStateChange((event, session) => {
+          if (event === "SIGNED_IN" && session && session.user) {
+            // Schedule routing safely outside the auth callback per Supabase guidance
+            // to avoid calling Supabase RPC/data methods while internal auth lock is held
+            setTimeout(() => {
+              if (!isNavigating && !isRouting) {
+                performRoleRouting(session);
+              }
+            }, 0);
+          }
+        });
+      }
+
+      // ----------------------------------------------------
+      // Initialization
+      // ----------------------------------------------------
+      const urlParams = new URLSearchParams(window.location.search);
+      const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      const portalParam = (urlParams.get("portal") || CampusFixAuth.getSelectedPortal()).toLowerCase();
+      const modeParam = (urlParams.get("mode") || "").toLowerCase();
+      const errorParam = urlParams.get("error") || hashParams.get("error_description") || hashParams.get("error");
+
+      if (portalParam === "admin") {
+        setPortal("admin");
+      } else {
+        setPortal("student");
+      }
+
+      if (modeParam === "signup" && activePortal === "student") {
+        setMode("signup");
+      }
+
+      if (errorParam) {
+        showMessage(decodeURIComponent(errorParam.replace(/\+/g, " ")), "error");
+      }
+
+      evaluateSession();
+
+    })();
+  </script>
+</body>
+</html>
